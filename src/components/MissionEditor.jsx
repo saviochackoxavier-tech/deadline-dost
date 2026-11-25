@@ -4,6 +4,7 @@ import { MISSION_TYPES, PRIORITIES } from '../lib/missions.js';
 import { LIMITS } from '../lib/text.js';
 import { todayKey } from '../lib/date.js';
 import { Icon } from './Icons.jsx';
+import MagicPaste from './MagicPaste.jsx';
 
 const EMPTY_FORM = {
   title: '',
@@ -157,6 +158,8 @@ export default function MissionEditor({ open, mission = null, prefill = null, on
               {errors.form}
             </p>
           ) : null}
+
+          {isEditing ? null : <MagicPaste compact onDeployed={onClose} />}
 
           <Field id="mission-title" label="Mission title" error={errors.title}>
             <input
