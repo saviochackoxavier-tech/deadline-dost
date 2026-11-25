@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useApp } from '../context/AppContext.jsx';
 import { Icon } from '../components/Icons.jsx';
 import { Panel, ProgressBar, SectionHeading, StatTile } from '../components/ui.jsx';
@@ -5,10 +6,14 @@ import { computeBestStreak, computeStreak, computeXp, getLevel } from '../lib/ga
 import { initials, profileMeta } from '../lib/profile.js';
 import { summarizeMissions } from '../lib/missions.js';
 import { todayKey } from '../lib/date.js';
+import { clearAiKey, readAiKey, writeAiKey } from '../lib/storage.js';
 
 export default function Profile() {
   const { user, missions, logout, resetAll, confirm } = useApp();
   const base = todayKey();
+  const [aiKey, setAiKey] = useState('');
+  const [aiSaved, setAiSaved] = useState(() => Boolean(readAiKey()));
+  const [aiNote, setAiNote] = useState('');
 
   const summary = summarizeMissions(missions, base);
   const xp = computeXp(missions);
@@ -16,6 +21,26 @@ export default function Profile() {
   const streak = computeStreak(missions, base);
   const best = computeBestStreak(missions);
   const meta = profileMeta(user);
+
+  const handleSaveKey = (event) => {
+    event.preventDefault();
+    const value = aiKey.trim();
+    if (value.length < 20) {
+      setAiNote('That key looks too short. Paste the full Gemini API key.');
+      return;
+    }
+    const saved = writeAiKey(value);
+    setAiSaved(Boolean(saved));
+    setAiKey('');
+    setAiNote(saved ? 'Key saved to this browser only. Cloud Enhance is now available.' : 'Could not save the key — browser storage may be blocked.');
+  };
+
+  const handleClearKey = () => {
+    clearAiKey();
+    setAiSaved(false);
+    setAiKey('');
+    setAiNote('Key removed from this browser.');
+  };
 
   const handleReset = async () => {
     const confirmed = await confirm({
@@ -99,6 +124,59 @@ export default function Profile() {
       </Panel>
 
       <Panel className="p-5">
+        <SectionHeading
+          eyebrow="AI enhancement (optional)"
+          title="Bring your own Gemini key"
+          description="Off by default. The parser and planner run locally with no network calls — a saved key only enables the Cloud Enhance button in AI Magic Paste."
+        />
+
+        <form onSubmit={handleSaveKey} className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-end">
+          <div className="flex-1">
+            <label className="label" htmlFor="ai-key">
+              Gemini API key
+            </label>
+            <input
+              id="ai-key"
+              type="password"
+              className="field"
+              value={aiKey}
+              onChange={(event) => {
+                setAiKey(event.target.value);
+                setAiNote('');
+              }}
+              placeholder={aiSaved ? '•••• key saved — paste a new key to replace' : 'Paste your key'}
+              autoComplete="off"
+              spellCheck={false}
+              maxLength={200}
+            />
+          </div>
+          <div className="flex gap-2">
+            <button type="submit" className="btn btn-ghost btn-sm">
+              <Icon name="shield" className="h-3.5 w-3.5" />
+              {aiSaved ? 'Replace key' : 'Save key'}
+            </button>
+            {aiSaved ? (
+              <button type="button" className="btn btn-ghost btn-sm" onClick={handleClearKey}>
+                <Icon name="trash" className="h-3.5 w-3.5" />
+                Clear
+              </button>
+            ) : null}
+          </div>
+        </form>
+
+        {aiNote ? (
+          <p role="status" className="mt-2 text-xs font-medium text-gold">
+            {aiNote}
+          </p>
+        ) : null}
+
+        <p className="mt-3 text-[11px] leading-relaxed text-muted">
+          The key never leaves this device except as the authorization header of the Cloud Enhance request you
+          trigger yourself. It is never logged, and Reset app data removes it.
+        </p>
+      </Panel>
+
+      <Panel className="p-5">
         <SectionHeading eyebrow="Data" title="What is stored" />
         <ul className="mt-3 space-y-2 text-xs leading-relaxed text-muted">
           <li>
@@ -113,6 +191,12 @@ export default function Profile() {
             <span className="font-mono text-[11px] text-ink">deadlineDost_session</span> — whether you are
             currently logged in on this browser.
           </li>
+          {aiSaved ? (
+            <li>
+              <span className="font-mono text-[11px] text-ink">deadlineDost_aiKey</span> — your optional Gemini
+              key, read only when you press Cloud Enhance.
+            </li>
+          ) : null}
         </ul>
       </Panel>
     </div>
