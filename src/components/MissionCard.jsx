@@ -2,6 +2,7 @@ import { formatDateKey, relativeDueLabel, todayKey } from '../lib/date.js';
 import { getStatus, priorityLabel, STATUS_META, typeLabel } from '../lib/missions.js';
 import { Icon } from './Icons.jsx';
 import { PriorityBadge, StatusBadge } from './ui.jsx';
+import AiPlan from './AiPlan.jsx';
 
 export default function MissionCard({
   mission,
@@ -50,6 +51,8 @@ export default function MissionCard({
             <span className="text-muted/70">·</span>
             <span className="text-muted">{priorityLabel(mission.priority)} priority</span>
           </div>
+
+          <AiPlan mission={mission} />
         </div>
 
         <div className="flex shrink-0 items-center gap-1.5 sm:flex-col sm:items-end">
