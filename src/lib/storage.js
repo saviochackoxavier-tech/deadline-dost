@@ -13,6 +13,8 @@ export const STORAGE_KEYS = {
   user: 'deadlineDost_user',
   missions: 'deadlineDost_missions',
   session: 'deadlineDost_session',
+  // Optional BYOK key for cloud-enhanced parsing. Local-only, never logged.
+  aiKey: 'deadlineDost_aiKey',
 };
 
 function getStorage() {
@@ -119,8 +121,28 @@ export function writeSession(active) {
   return removeRaw(STORAGE_KEYS.session);
 }
 
-/** Removes the profile, missions and session. Used only by "Reset application data". */
+export function readAiKey() {
+  const { value } = readRaw(STORAGE_KEYS.aiKey);
+  return typeof value === 'string' ? value.trim().slice(0, 200) : '';
+}
+
+export function writeAiKey(key) {
+  const value = typeof key === 'string' ? key.trim().slice(0, 200) : '';
+  if (!value) return removeRaw(STORAGE_KEYS.aiKey);
+  return writeRaw(STORAGE_KEYS.aiKey, value);
+}
+
+export function clearAiKey() {
+  return removeRaw(STORAGE_KEYS.aiKey);
+}
+
+/** Removes the profile, missions, session and any saved AI key. Used only by "Reset application data". */
 export function clearAll() {
-  const results = [removeRaw(STORAGE_KEYS.user), removeRaw(STORAGE_KEYS.missions), removeRaw(STORAGE_KEYS.session)];
+  const results = [
+    removeRaw(STORAGE_KEYS.user),
+    removeRaw(STORAGE_KEYS.missions),
+    removeRaw(STORAGE_KEYS.session),
+    removeRaw(STORAGE_KEYS.aiKey),
+  ];
   return results.every(Boolean);
 }
