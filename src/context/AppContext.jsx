@@ -4,9 +4,11 @@ import { buildProfile, validateProfile } from '../lib/profile.js';
 import {
   buildMission,
   markMissionComplete,
+  normalizeSubtasks,
   reopenMissionRecord,
   validateMissionInput,
 } from '../lib/missions.js';
+import { generateTacticalSteps, regenerateTacticalSteps } from '../lib/aiEngine.js';
 import { createDemoData } from '../lib/demo.js';
 
 const AppContext = createContext(null);
@@ -159,6 +161,71 @@ export function AppProvider({ children }) {
     [commitMissions, notify],
   );
 
+  /** Deploy several parsed missions in a single write-through commit. */
+  const addMissions = useCallback(
+    (inputs) => {
+      const list = Array.isArray(inputs) ? inputs : [];
+      const created = [];
+      const failures = [];
+      let working = missionsRef.current;
+
+      for (const input of list) {
+        const { values, errors } = validateMissionInput(input);
+        if (Object.keys(errors).length > 0) {
+          failures.push(errors);
+          continue;
+        }
+        const mission = buildMission(
+          { ...values, subtasks: normalizeSubtasks(input?.subtasks) },
+          working.map((item) => item.id),
+        );
+        working = [...working, mission];
+        created.push(mission);
+      }
+
+      if (created.length > 0) {
+        commitMissions(working);
+        notify(
+          created.length === 1
+            ? '1 mission deployed to your command centre.'
+            : `${created.length} missions deployed to your command centre.`,
+          'success',
+        );
+      }
+      return { created, failures };
+    },
+    [commitMissions, notify],
+  );
+
+  /** Generate the 3-step tactical plan on demand (older missions have none). */
+  const ensurePlan = useCallback(
+    (id, { force = false } = {}) => {
+      const target = missionsRef.current.find((mission) => mission.id === id);
+      if (!target) return;
+      if (!force && Array.isArray(target.subtasks) && target.subtasks.length > 0) return;
+
+      const subtasks = force ? regenerateTacticalSteps(target) : generateTacticalSteps(target);
+      commitMissions(
+        missionsRef.current.map((mission) => (mission.id === id ? { ...mission, subtasks } : mission)),
+      );
+    },
+    [commitMissions],
+  );
+
+  const toggleSubtask = useCallback(
+    (id, stepId) => {
+      const target = missionsRef.current.find((mission) => mission.id === id);
+      if (!target) return;
+      const subtasks = normalizeSubtasks(target.subtasks).map((step) =>
+        step.id === stepId ? { ...step, done: !step.done } : step,
+      );
+      commitMissions(
+        missionsRef.current.map((mission) => (mission.id === id ? { ...mission, subtasks } : mission)),
+      );
+    },
+    [commitMissions],
+  );
+
   const updateMission = useCallback(
     (id, input) => {
       const { values, errors } = validateMissionInput(input);
@@ -231,6 +298,9 @@ export function AppProvider({ children }) {
       logout,
       resetAll,
       addMission,
+      addMissions,
+      ensurePlan,
+      toggleSubtask,
       updateMission,
       deleteMission,
       completeMission,
@@ -255,6 +325,9 @@ export function AppProvider({ children }) {
       logout,
       resetAll,
       addMission,
+      addMissions,
+      ensurePlan,
+      toggleSubtask,
       updateMission,
       deleteMission,
       completeMission,
