@@ -130,6 +130,23 @@ export function validateMissionInput(input = {}) {
   };
 }
 
+/** Validate an optional checklist attached to a mission. */
+export function normalizeSubtasks(raw, limit = 6) {
+  if (!Array.isArray(raw)) return [];
+  const seen = new Set();
+  const steps = [];
+  for (const [index, step] of raw.entries()) {
+    const label = cleanText(step?.label, 100);
+    if (!label) continue;
+    let id = typeof step?.id === 'string' ? step.id.trim().slice(0, 60) : '';
+    if (!id || seen.has(id)) id = `step-${index + 1}-${steps.length}`;
+    seen.add(id);
+    steps.push({ id, label, done: step?.done === true });
+    if (steps.length >= limit) break;
+  }
+  return steps;
+}
+
 /** Turn validated values into a fresh mission record. */
 export function buildMission(values, existingIds = [], now = new Date()) {
   const taken = new Set(existingIds);
@@ -141,6 +158,7 @@ export function buildMission(values, existingIds = [], now = new Date()) {
     priority: values.priority,
     type: values.type,
     description: values.description ?? '',
+    subtasks: normalizeSubtasks(values.subtasks),
     completed: false,
     completedAt: null,
     completionLog: [],
@@ -207,6 +225,9 @@ export function normalizeMission(raw) {
     priority,
     type,
     description: cleanMultiline(raw.description, LIMITS.description),
+    // Optional AI checklist. Missing on older missions, so it always defaults
+    // to an empty list instead of failing validation.
+    subtasks: normalizeSubtasks(raw.subtasks),
     completed,
     completedAt,
     completionLog: log,
