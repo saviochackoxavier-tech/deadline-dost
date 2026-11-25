@@ -26,6 +26,8 @@ import {
 } from '../lib/missions.js';
 import { computeStreak, computeUrgency, computeXp, getLevel } from '../lib/gamification.js';
 import { LIMITS } from '../lib/text.js';
+import AiPlan from '../components/AiPlan.jsx';
+import MagicPaste from '../components/MagicPaste.jsx';
 
 function BossCard({ mission, baseKey, onComplete, onEdit }) {
   const status = getStatus(mission, baseKey);
@@ -41,6 +43,7 @@ function BossCard({ mission, baseKey, onComplete, onEdit }) {
       <p className="mt-1 text-[11px] text-muted">
         {mission.subject} · {typeLabel(mission.type)}
       </p>
+      <AiPlan mission={mission} />
       <div className="mt-auto flex items-center gap-1.5 pt-4">
         <button type="button" onClick={() => onComplete(mission.id)} className="btn btn-primary btn-sm flex-1">
           <Icon name="check" className="h-3.5 w-3.5" strokeWidth={2.2} />
@@ -325,6 +328,8 @@ export default function Dashboard({ onNewMission, onEditMission, onNavigate }) {
               </p>
             ) : null}
           </Panel>
+
+          <MagicPaste />
         </div>
 
         <div className="space-y-4">
