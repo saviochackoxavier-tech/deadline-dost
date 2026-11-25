@@ -17,6 +17,8 @@ import {
   computeXp,
   getLevel,
 } from './gamification.js';
+import { generateTacticalSteps, parseMessyTextToMissions } from './aiEngine.js';
+import { normalizeSubtasks } from './missions.js';
 
 function makeMission(overrides = {}, now = new Date(2026, 10, 18, 10, 0, 0)) {
   return buildMission(
@@ -275,5 +277,126 @@ describe('gamification', () => {
     expect(computeUrgency([], base)).toMatchObject({ percent: 0, eligibleCount: 0, label: 'Clear' });
     expect(computeUrgency([{ dueDate: '2026-12-30', completed: false }], base).percent).toBe(0);
     expect(computeUrgency([{ dueDate: '2026-11-10', completed: false }], base).percent).toBe(100);
+  });
+});
+
+describe('AI mission parser', () => {
+  const base = '2026-11-25';
+  const notice = [
+    'Class group 9:41 pm — please note:',
+    '1. DBMS assignment due 27/11, submit the PDF',
+    '2. OS lab record this Friday',
+    '- CN unit test on 30 Nov',
+    '* Mini project review tomorrow',
+  ].join('\n');
+
+  it('splits a messy WhatsApp dump into separate missions', () => {
+    const drafts = parseMessyTextToMissions(notice, base);
+    expect(drafts).toHaveLength(4);
+    expect(drafts.map((draft) => draft.dueDate)).toEqual([
+      '2026-11-27',
+      '2026-11-27',
+      '2026-11-30',
+      '2026-11-26',
+    ]);
+    expect(drafts.every((draft) => /^\d{4}-\d{2}-\d{2}$/.test(draft.dueDate))).toBe(true);
+    expect(drafts.map((draft) => draft.type)).toEqual(['assignment', 'lab', 'exam', 'project']);
+    expect(drafts[0].subject).toBe('Database Management');
+    expect(drafts[0].priority).toBe('high');
+    expect(drafts.every((draft) => draft.title.length <= 80)).toBe(true);
+    expect(drafts.every((draft) => draft.confidence >= 52 && draft.confidence <= 98)).toBe(true);
+  });
+
+  it('resolves relative and explicit dates against the reference day', () => {
+    const drafts = parseMessyTextToMissions(
+      [
+        '- statistics problem set tomorrow',
+        '- physics record next week',
+        '- maths quiz in 3 days',
+        '- chemistry viva today',
+      ].join('\n'),
+      base,
+    );
+    expect(drafts.map((draft) => draft.dueDate)).toEqual([
+      '2026-11-26',
+      '2026-12-02',
+      '2026-11-28',
+      '2026-11-25',
+    ]);
+  });
+
+  it('rolls an inferred month/day into the next year when it is stale', () => {
+    const [draft] = parseMessyTextToMissions('submit the physics record on 5 Jan', base);
+    expect(draft.dueDate).toBe('2027-01-05');
+  });
+
+  it('sanitises control characters and caps every parsed string', () => {
+    const [draft] = parseMessyTextToMissions(
+      `\u0007  <script>alert(1)</script>${'x'.repeat(120)} DBMS assignment due 27/11\u0000`,
+      base,
+    );
+    expect(draft).toBeTruthy();
+    expect(draft.title).not.toMatch(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/);
+    expect(draft.title.length).toBeLessThanOrEqual(80);
+    expect(draft.description.length).toBeLessThanOrEqual(400);
+    expect(draft.dueDate).toBe('2026-11-27');
+  });
+
+  it('returns nothing when the text holds no deadline', () => {
+    expect(parseMessyTextToMissions('good luck for the semester everyone', base)).toEqual([]);
+    expect(parseMessyTextToMissions('   ', base)).toEqual([]);
+  });
+});
+
+describe('AI tactical planner', () => {
+  const base = '2026-11-25';
+
+  it('builds three unique, time-boxed, unfinished steps', () => {
+    const steps = generateTacticalSteps(
+      { type: 'lab', subject: 'Operating Systems', dueDate: '2026-11-27' },
+      base,
+    );
+    expect(steps).toHaveLength(3);
+    expect(new Set(steps.map((step) => step.id)).size).toBe(3);
+    expect(steps.every((step) => step.done === false)).toBe(true);
+    expect(steps.every((step) => step.label.length <= 100)).toBe(true);
+    expect(steps.some((step) => step.label.includes('Operating Systems'))).toBe(true);
+    expect(steps.map((step) => step.label).join(' ')).not.toContain('undefined');
+  });
+
+  it('tailors steps to the mission type and remaining days', () => {
+    const examSteps = generateTacticalSteps(
+      { type: 'exam', subject: 'Statistics', dueDate: '2026-11-28' },
+      base,
+    );
+    const examText = examSteps.map((step) => step.label).join(' ');
+    expect(examText).toMatch(/formula sheet/i);
+    expect(examText).toMatch(/past-paper/i);
+    expect(examText).toContain('in 3 days');
+
+    const overdue = generateTacticalSteps(
+      { type: 'assignment', subject: 'DBMS', dueDate: '2026-11-20' },
+      base,
+    );
+    expect(overdue.map((step) => step.label).join(' ')).toContain('5 days overdue');
+  });
+
+  it('normalises stored checklists and tolerates missions without them', () => {
+    expect(normalizeSubtasks(undefined)).toEqual([]);
+    expect(normalizeSubtasks([{ label: '  read brief ', done: true }, null, { label: '' }])).toEqual([
+      { id: 'step-1-0', label: 'read brief', done: true },
+    ]);
+
+    const legacy = normalizeMission({ id: 'legacy', title: 'Old mission', subject: 'Maths', dueDate: '2026-12-01' });
+    expect(legacy.subtasks).toEqual([]);
+
+    const planned = normalizeMission({
+      id: 'planned',
+      title: 'New mission',
+      subject: 'Maths',
+      dueDate: '2026-12-01',
+      subtasks: [{ id: 'step-1', label: 'Start', done: true }],
+    });
+    expect(planned.subtasks).toEqual([{ id: 'step-1', label: 'Start', done: true }]);
   });
 });
